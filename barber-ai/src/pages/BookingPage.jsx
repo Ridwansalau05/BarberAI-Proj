@@ -752,6 +752,70 @@ export default function BookingPage() {
     }
   }
 
+    React.useEffect(() => {
+    const s = localStorage.getItem("prefillService");
+    if (s) {
+        const found = SERVICES.find((x) => x.name === s);
+        if (found) setService(found);
+        localStorage.removeItem("prefillService");
+    }
+    }, []);
+
+  // ⬅️ NEW: handle final confirm — generate & store recommendations
+  function handleConfirm(d) {
+    setDetails(d);
+
+    try {
+      const auth = JSON.parse(localStorage.getItem("authUser") || "{}");
+      // simple id fallback for demo (works with your current auth mock)
+      const userId = auth.id || auth.email || "demo-user";
+
+      // demo profile (faceShape, likes, history) — these keys are optional
+      const profile = {
+        faceShape: auth.faceShape || "Oval",
+        liked: JSON.parse(localStorage.getItem(`liked:${userId}`) || "[]"),
+        history: JSON.parse(localStorage.getItem(`history:${userId}`) || "[]"),
+      };
+
+      const bookingId = `bk_${Date.now()}`;
+      const recentBooking = {
+        id: bookingId,
+        shop,
+        service,
+        barber,
+        dateISO,
+        time,
+        name: d.name,
+        email: d.email,
+      };
+
+      // one call does it all: generate + persist “AI recommendations”
+      writeRecommendationsForUser(userId, profile, recentBooking);
+
+      // (optional) push into simple local history for future demos
+      const newItem = {
+        id: bookingId,
+        dateISO,
+        time,
+        service: service?.name,
+        duration: service?.duration,
+        barber: barber?.id,
+        barberName: barber?.name,
+        shop: shop?.id,
+        status: "completed", // demo: mark completed immediately
+      };
+      const newHistory = [newItem, ...profile.history];
+      localStorage.setItem(`history:${userId}`, JSON.stringify(newHistory));
+
+      // prompt feedback on next dashboard visit
+      localStorage.setItem(`pendingFeedback:${userId}`, bookingId);
+    } catch (_) {
+      // swallow demo storage errors
+    }
+
+    setStep(6);
+  }
+
   return (
     <section className="container-xl py-10">
       <StepHeader step={step} />

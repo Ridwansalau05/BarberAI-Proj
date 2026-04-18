@@ -120,7 +120,7 @@ export default function Reviews() {
       <div className="container-xl py-16 sm:py-20">
         <div className="text-center">
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900">
-            What Users Say
+            What Our Users Say
           </h2>
 
           <div className="mt-4 inline-flex items-center gap-3 rounded-full border border-slate-200 bg-slate-50 px-4 py-2">

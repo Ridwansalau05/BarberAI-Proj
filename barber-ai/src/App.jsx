@@ -49,10 +49,11 @@ function MinimalLayout() {
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route element={<MainLayout />}>
-          <Route path="/" element={<Landing />} />
-        </Route>
+    <Routes>
+      {/* Public marketing site */}
+      <Route element={<MainLayout />}>
+        <Route path="/" element={<Landing />} />
+      </Route>
 
         <Route element={<MinimalLayout />}>
           <Route path="/login" element={<AuthPage mode="login" />} />

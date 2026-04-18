@@ -56,6 +56,7 @@ function StatCard({ icon: Icon, label, value }) {
         <div>
           <div className="text-sm text-slate-500">{label}</div>
           <div className="text-2xl font-semibold">{value}</div>
+          {foot && <div className="text-slate-500 text-xs mt-0.5">{foot}</div>}
         </div>
       </div>
     </div>

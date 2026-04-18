@@ -6,9 +6,29 @@ import { getUserProfile } from "../backend/services/userService";
 
 const AuthCtx = createContext(null);
 
+<<<<<<< HEAD
 function normalizeUser(firebaseUser, profile) {
   if (!firebaseUser) {
     return null;
+=======
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+
+  // restore on refresh
+  useEffect(() => {
+    const saved = localStorage.getItem("authUser");
+    if (saved) setUser(JSON.parse(saved));
+  }, []);
+  // persist on change
+  useEffect(() => {
+    if (user) localStorage.setItem("authUser", JSON.stringify(user));
+    else localStorage.removeItem("authUser");
+  }, [user]);
+
+  async function login({ email, role }) {
+    // TODO: replace with real backend auth
+    setUser({ id: crypto.randomUUID(), email, role }); // demo
+>>>>>>> 524560b169670769cc9550be57233ec9bf3e3aac
   }
 
   return {

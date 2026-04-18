@@ -5,8 +5,8 @@ import { Link } from "react-router-dom";
 export default function Navbar() {
   return (
     <header className="sticky top-0 z-50 text-white border-b border-white/10 bg-gradient-to-b from-[#203149] to-[#0f1b2d]">
-        <div className="container-xl h-14 flex items-center justify-between">
-    
+      <div className="w-full h-14 flex items-center justify-between px-10">
+
         <Link to="/" className="flex items-center gap-2 text-white">
           <Scissors className="h-6 w-6 text-brand-gold" />
           <span className="text-lg font-semibold hover:text-black">BarberAI</span>

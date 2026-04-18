@@ -4,13 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vite --root barber-ai --config barber-ai/vite.config.js",
+    "build": "vite build --root barber-ai --config barber-ai/vite.config.js",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview --root barber-ai --config barber-ai/vite.config.js"
   },
   "dependencies": {
-    "@types/react-router-dom": "^5.3.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.542.0",

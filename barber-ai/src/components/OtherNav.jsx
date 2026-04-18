@@ -40,6 +40,10 @@ export default function OtherNav() {
     navigate("/login", { replace: true });
   }
 
+  const link =
+    "inline-flex items-center gap-2 px-3 py-2 rounded-xl text-slate-200 hover:text-white hover:bg-white/5 transition";
+  const active = "bg-white/10 text-white";
+
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#121F2F]/95 backdrop-blur">
       <div className="container-xl flex h-16 items-center justify-between">
@@ -68,7 +72,10 @@ export default function OtherNav() {
             </NavLink>
           )}
 
-          <button onClick={handleLogout} className={`${linkCls} !text-red-300 hover:!text-white`}>
+          <button
+            onClick={handleLogout}
+            className={`${link} !text-red-300 hover:!text-white`}
+          >
             <LogOut className="h-4 w-4" />
             Logout
           </button>
