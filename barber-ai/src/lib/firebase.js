@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-export { auth, db } from "../backend/firebase";
-=======
 // Defensive Firebase bootstrap: gracefully handles missing SDK/package.
 export let auth = null;
 export let db = null;
@@ -28,4 +25,3 @@ const firebaseConfig = {
     // SDK not installed or failed: keep nulls and allow fallbacks
   }
 })();
->>>>>>> 524560b169670769cc9550be57233ec9bf3e3aac

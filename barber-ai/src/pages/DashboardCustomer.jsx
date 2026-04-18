@@ -3,8 +3,7 @@ import { useNavigate } from "react-router-dom";
 import FeedbackModal from "../components/FeedbackModal";
 import StarRating from "../components/StarRating";
 import FeedbackForm from "../components/FeedbackForm";
-import { listFeedbackForUser, submitFeedback } from "../lib/feedback";
-import { listHistory } from "../lib/history";
+import { listFeedbackForUser } from "../lib/feedback";
 import Recommendations from "../components/Recommendations";
 import { bestTimeWindow } from "../ai/rules";
 import {
@@ -16,10 +15,8 @@ import {
   UserCircle2,
   X,
 } from "lucide-react";
-import { bestTimeWindow } from "../ai/rules";
 import { getUserBookings, updateBooking } from "../backend/services/bookingService";
 import { useAuth } from "../state/AuthContext";
-import Recommendations from "../components/Recommendations";
 function fmtDateTime(dateISO, time) {
   const date = new Date(`${dateISO}T${time}:00`);
   return date.toLocaleString(undefined, {
@@ -112,6 +109,7 @@ function SectionCard({ title, tabs, activeTab, setActiveTab, children }) {
 
 export default function DashboardCustomer() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = React.useState("Overview");
   const [bookings, setBookings] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -165,6 +163,11 @@ export default function DashboardCustomer() {
   React.useEffect(() => {
     loadBookings();
   }, [loadBookings]);
+
+  React.useEffect(() => {
+    if (!user?.uid) return;
+    listFeedbackForUser(user.uid).then(setFeedback).catch(console.error);
+  }, [user?.uid]);
   const enrichedProfile = { ...profile, prefWeights };
   const upcomingBookings = bookings.filter((booking) => booking.status !== "cancelled" && !isPastBooking(booking));
   const historyBookings = bookings.filter((booking) => booking.status === "cancelled" || isPastBooking(booking));
