@@ -1,23 +1,20 @@
-// src/App.jsx
 import React from "react";
-import { Routes, Route, Outlet } from "react-router-dom";
+import { Outlet, Route, Routes } from "react-router-dom";
 
-import Navbar from "./components/Navbar";
+import Navbar from "./components/NavBar";
 import OtherNav from "./components/OtherNav";
-
-import Hero from "./sections/Hero";
-import Features from "./sections/Features";
-import Stats from "./sections/Stats";
-import Reviews from "./sections/Reviews";
-import CTA from "./sections/CTA";
-
-import AuthPage from "./pages/AuthPage";
 import BookingPage from "./pages/BookingPage";
-import DashboardCustomer from "./pages/DashboardCustomer";
+import AuthPage from "./pages/AuthPage";
 import DashboardBarber from "./pages/DashboardBarber";
-
-import { AuthProvider } from "./state/AuthContext";     // <— from state/
-import RequireAuth from "./state/RequireAuth";          // <— from state/
+import DashboardCustomer from "./pages/DashboardCustomer";
+import DashboardOwner from "./pages/DashboardOwner";
+import CTA from "./sections/CTA";
+import Features from "./sections/Features";
+import Hero from "./sections/Hero";
+import Reviews from "./sections/Reviews";
+import Stats from "./sections/Stats";
+import { AuthProvider } from "./state/AuthContext";
+import RequireAuth from "./state/RequireAuth";
 
 function Landing() {
   return (
@@ -31,7 +28,6 @@ function Landing() {
   );
 }
 
-/* Layouts */
 function MainLayout() {
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -40,6 +36,7 @@ function MainLayout() {
     </div>
   );
 }
+
 function MinimalLayout() {
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -60,12 +57,10 @@ export default function App() {
         <Route element={<MinimalLayout />}>
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/signup" element={<AuthPage mode="signup" />} />
-
-          {/* protected */}
           <Route
             path="/book"
             element={
-              <RequireAuth>
+              <RequireAuth role="customer">
                 <BookingPage />
               </RequireAuth>
             }
@@ -73,7 +68,7 @@ export default function App() {
           <Route
             path="/dashboard/customer"
             element={
-              <RequireAuth>
+              <RequireAuth role="customer">
                 <DashboardCustomer />
               </RequireAuth>
             }
@@ -81,8 +76,16 @@ export default function App() {
           <Route
             path="/dashboard/barber"
             element={
-              <RequireAuth>
+              <RequireAuth role="barber">
                 <DashboardBarber />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/dashboard/owner"
+            element={
+              <RequireAuth role="owner">
+                <DashboardOwner />
               </RequireAuth>
             }
           />

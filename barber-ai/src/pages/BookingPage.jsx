@@ -1,352 +1,241 @@
 import React from "react";
-import { Calendar, Clock, Scissors, ChevronLeft, Search, Store, Building2, MapPin } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
+  Building2,
+  Calendar,
+  ChevronLeft,
+  Clock,
+  MapPin,
+  Scissors,
+  Search,
+  Store,
+} from "lucide-react";
+import { createBooking, getAvailableBarbersForShopDate } from "../backend/services/bookingService";
+import { DEFAULT_BARBER_SCHEDULE } from "../backend/services/scheduleService";
+import { listServicesByShop } from "../backend/services/serviceService";
+import { listShops } from "../backend/services/shopService";
+import { useAuth } from "../state/AuthContext";
 
-/* ---------- SHOPS ---------- */
-const SHOPS = [
-  { id: "downtown",   name: "Breezy Cutz",   address: "123 Main St",        icon: Building2 },
-  { id: "midtown",    name: "Brazy Cutz",    address: "456 Oak Ave",        icon: Store },
-  { id: "eastside",   name: "CrossFades",    address: "618 Church St",      icon: Building2 },
-  { id: "university", name: "Dapper Cutz",   address: "419 Ogunmefun Ave",  icon: Store },
-];
+const SHOP_ICONS = {
+  downtown: Building2,
+  midtown: Store,
+  eastside: Building2,
+  university: Store,
+};
 
+const ANY_BARBER = {
+  id: "any",
+  name: "Any available barber",
+  role: "fallback",
+  specialties: ["Fastest match"],
+};
 
-/* ---------- SERVICES (expanded) ---------- */
-const SERVICES = [
-  { id: "fade",        name: "Skin Fade",        duration: 45, price: 35, desc: "Clean fade with line-up." },
-  { id: "beard",       name: "Beard Trim",       duration: 20, price: 15, desc: "Beard shape + finish." },
-  { id: "cut+beard",   name: "Cut + Beard",      duration: 60, price: 45, desc: "Full package." },
-  { id: "lineup",      name: "Line Up",          duration: 20, price: 12, desc: "Edges and outline only." },
-  { id: "hotshave",    name: "Hot Towel Shave",  duration: 30, price: 25, desc: "Classic straight razor shave." },
-  { id: "headshave",   name: "Head Shave",       duration: 35, price: 30, desc: "Clean scalp shave & finish." },
-  { id: "kids",        name: "Kids Cut (Under 12)", duration: 30, price: 20, desc: "Gentle, quick, and tidy." },
-  { id: "washstyle",   name: "Shampoo & Style",  duration: 25, price: 18, desc: "Wash, blow dry, and style." },
-  { id: "design",      name: "Hair Design",      duration: 30, price: 20, desc: "Custom parts & simple designs." },
-  { id: "deluxe",      name: "Deluxe Package",   duration: 75, price: 60, desc: "Cut + beard + hot towel + style." },
-];
-
-/* ---------- BARBERS (≥2 per shop) ---------- */
-const BARBERS = [
-  // Downtown
-  { id: "ayo",   shopId: "downtown",   name: "Ayo Lawal",  rating: 4.9, specialties: ["Fades", "Line-ups"] },
-  { id: "maria", shopId: "downtown",   name: "Maria S.",   rating: 4.8, specialties: ["Scissor cuts", "Beards"] },
-  { id: "theo",  shopId: "downtown",   name: "Theo K.",    rating: 4.7, specialties: ["Designs", "Afro"] },
-
-  // Midtown
-  { id: "kofi",  shopId: "midtown",    name: "Kofi D.",    rating: 5.0, specialties: ["Afro", "Designs"] },
-  { id: "nana",  shopId: "midtown",    name: "Nana B.",    rating: 4.8, specialties: ["Fades", "Hot shaves"] },
-
-  // Eastside
-  { id: "remy",  shopId: "eastside",   name: "Remy P.",    rating: 4.9, specialties: ["Tapers", "Beards"] },
-  { id: "zara",  shopId: "eastside",   name: "Zara Q.",    rating: 4.8, specialties: ["Scissor cuts", "Kids"] },
-
-  // University
-  { id: "diego", shopId: "university", name: "Diego R.",   rating: 4.9, specialties: ["Fades", "Line-ups"] },
-  { id: "malik", shopId: "university", name: "Malik T.",   rating: 4.7, specialties: ["Designs", "Beards"] },
-];
-
-/* ---------- helpers ---------- */
-const fmtMoney = n => `$${Number(n || 0).toFixed(2)}`;
+const fmtMoney = (amount) => `$${Number(amount || 0).toFixed(2)}`;
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-/** Generate 30-min slots between 9:00–18:00 considering duration + 10m buffer */
-function generateSlots(dateISO, durationMin) {
-  const open = 9 * 60, close = 18 * 60, buffer = 10;
-  const step = 30;
-  const slots = [];
-  for (let m = open; m + durationMin + buffer <= close; m += step) {
-    const hh = String(Math.floor(m / 60)).padStart(2, "0");
-    const mm = String(m % 60).padStart(2, "0");
-    slots.push(`${hh}:${mm}`);
-  }
-  return slots;
+function timeToMinutes(time) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
 }
 
-/* ---------- Step components ---------- */
-function ShopStep({ value, onChange, onNext }) {
-  const [q, setQ] = React.useState("");
+function sortSlotValues(values) {
+  return [...values].sort((left, right) => timeToMinutes(left) - timeToMinutes(right));
+}
 
+function StepHeader({ step }) {
+  const steps = ["Shop", "Service", "Barber", "Time", "Details", "Confirm"];
+
+  return (
+    <div className="mb-8">
+      <div className="flex justify-center gap-6 text-sm">
+        {steps.map((label, index) => {
+          const stepNumber = index + 1;
+          const active = step === stepNumber;
+
+          return (
+            <div key={label} className="flex items-center gap-2">
+              <div
+                className={`grid h-8 w-8 place-items-center rounded-full ${
+                  active ? "bg-brand-gold text-slate-900" : "bg-slate-200 text-slate-600"
+                }`}
+              >
+                {stepNumber}
+              </div>
+              <span className={`font-semibold ${active ? "text-slate-900" : "text-slate-500"}`}>{label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="pointer-events-none mt-4 h-[2px] bg-gradient-to-r from-transparent via-brand-gold/60 to-transparent" />
+    </div>
+  );
+}
+
+function StepActions({ onBack, onNext, nextDisabled }) {
+  return (
+    <div className={`mt-6 flex ${onBack ? "justify-between" : "justify-end"}`}>
+      {onBack && (
+        <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900">
+          <ChevronLeft className="h-4 w-4" /> Back
+        </button>
+      )}
+      <button type="button" disabled={nextDisabled} onClick={onNext} className="btn btn-primary disabled:opacity-50">
+        Continue
+      </button>
+    </div>
+  );
+}
+
+function ShopStep({ shops, loading, value, onChange, onNext }) {
+  const [query, setQuery] = React.useState("");
   const filtered = React.useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return SHOPS;
-    return SHOPS.filter(
-      (x) =>
-        x.name.toLowerCase().includes(s) ||
-        (x.address || "").toLowerCase().includes(s)
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return shops;
+
+    return shops.filter(
+      (shop) =>
+        shop.name.toLowerCase().includes(normalized) ||
+        (shop.address || "").toLowerCase().includes(normalized),
     );
-  }, [q]);
+  }, [query, shops]);
 
   return (
     <div>
       <h2 className="text-2xl font-extrabold">Choose a shop</h2>
       <p className="mt-1 text-slate-600">Pick your preferred location.</p>
 
-      {/* (optional) search bar — keep or remove */}
       <div className="mt-4">
         <div className="relative w-full sm:max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search shops (name or address)"
-            className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 py-2 outline-none focus:ring-2 focus:ring-brand-gold"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search shops by name or address"
+            className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-10 pr-10 outline-none focus:ring-2 focus:ring-brand-gold"
           />
-          {q && (
+          {query && (
             <button
               type="button"
-              onClick={() => setQ("")}
+              onClick={() => setQuery("")}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               aria-label="Clear search"
             >
-              ×
+              x
             </button>
           )}
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        {filtered.length === 0 ? (
-          <div className="text-slate-500">No shops match “{q}”.</div>
-        ) : (
-          filtered.map((s) => {
-            const selected = value?.id === s.id;
-            const Icon = s.icon || Store; // fallback if no icon specified
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => onChange(s)}
-                className={`text-left rounded-2xl border p-5 transition ${
-                  selected ? "border-brand-gold shadow-soft" : "border-slate-200 hover:shadow"
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <Icon className="mt-1 h-5 w-5 text-brand-gold" />
-                  <div>
-                    <div className="font-semibold">{s.name}</div>
-                    <div className="mt-1 text-slate-600 text-sm inline-flex items-center gap-1">
-                      <MapPin className="h-4 w-4 text-slate-400" />
-                      {s.address}
+      {loading && <div className="mt-6 text-slate-500">Loading shops...</div>}
+
+      {!loading && (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          {filtered.length === 0 ? (
+            <div className="text-slate-500">No shops match "{query}".</div>
+          ) : (
+            filtered.map((shop) => {
+              const Icon = SHOP_ICONS[shop.id] ?? Store;
+              const selected = value?.id === shop.id;
+
+              return (
+                <button
+                  key={shop.id}
+                  type="button"
+                  onClick={() => onChange(shop)}
+                  className={`rounded-2xl border p-5 text-left transition ${
+                    selected ? "border-brand-gold shadow-soft" : "border-slate-200 hover:shadow"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <Icon className="mt-1 h-5 w-5 text-brand-gold" />
+                    <div>
+                      <div className="font-semibold">{shop.name}</div>
+                      <div className="mt-1 inline-flex items-center gap-1 text-sm text-slate-600">
+                        <MapPin className="h-4 w-4 text-slate-400" />
+                        {shop.address || "Address not set"}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
 
-      <div className="mt-6 flex justify-end">
-        <button
-          type="button"
-          disabled={!value}
-          onClick={onNext}
-          className="btn btn-primary disabled:opacity-50"
-        >
-          Continue
-        </button>
-      </div>
+      <StepActions onNext={onNext} nextDisabled={!value} />
     </div>
   );
 }
 
-
-function StepHeader({ step }) {
-  const steps = ["Shop", "Service", "Barber", "Time", "Details", "Confirm"];
-  return (
-    <div className="mb-8">
-      <div className="flex justify-center gap-6 text-sm">
-        {steps.map((label, i) => {
-          const idx = i + 1;
-          const active = step === idx;
-          return (
-            <div key={label} className="flex items-center gap-2">
-              <div
-                className={`h-8 w-8 grid place-items-center rounded-full ${
-                  active ? "bg-brand-gold text-slate-900" : "bg-slate-200 text-slate-600"
-                }`}
-              >
-                {idx}
-              </div>
-              <span className={`font-semibold ${active ? "text-slate-900" : "text-slate-500"}`}>
-                {label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-4 h-[2px] bg-gradient-to-r from-transparent via-brand-gold/60 to-transparent pointer-events-none" />
-    </div>
-  );
-}
-
-function ServiceStep({ value, onChange, onNext, onBack }) {
+function ServiceStep({ services, loading, value, onChange, onBack, onNext }) {
   return (
     <div>
       <h2 className="text-2xl font-extrabold">Choose a service</h2>
-      <p className="mt-1 text-slate-600">Pick what you’d like to book.</p>
+      <p className="mt-1 text-slate-600">Pick what you would like to book.</p>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {SERVICES.map((s) => {
-          const selected = value?.id === s.id;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => onChange(s)}
-              className={`text-left rounded-2xl border p-5 transition ${
-                selected ? "border-brand-gold shadow-soft" : "border-slate-200 hover:shadow"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Scissors className="h-5 w-5 text-brand-gold" />
-                <div className="font-semibold">{s.name}</div>
-              </div>
-              <div className="mt-2 text-slate-600">{s.desc}</div>
-              <div className="mt-3 flex items-center gap-3 text-sm text-slate-500">
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="h-4 w-4" /> {s.duration}m
-                </span>
-                <span>•</span>
-                <span>{fmtMoney(s.price)}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      {loading ? (
+        <div className="mt-6 text-slate-500">Loading services...</div>
+      ) : services.length === 0 ? (
+        <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-6 text-slate-500">
+          This shop has no services configured yet.
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {services.map((service) => {
+            const selected = value?.id === service.id;
 
-      <div className={`mt-6 flex ${onBack ? "justify-between" : "justify-end"}`}>
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900"
-          >
-            ‹ Back
-          </button>
-        )}
-        <button
-          type="button"
-          disabled={!value}
-          onClick={onNext}
-          className="btn btn-primary disabled:opacity-50"
-        >
-          Continue
-        </button>
-      </div>
+            return (
+              <button
+                key={service.id}
+                type="button"
+                onClick={() => onChange(service)}
+                className={`rounded-2xl border p-5 text-left transition ${
+                  selected ? "border-brand-gold shadow-soft" : "border-slate-200 hover:shadow"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Scissors className="h-5 w-5 text-brand-gold" />
+                  <div className="font-semibold">{service.name}</div>
+                </div>
+                <div className="mt-2 text-slate-600">{service.description || "No description provided."}</div>
+                <div className="mt-3 flex items-center gap-3 text-sm text-slate-500">
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="h-4 w-4" /> {service.duration}m
+                  </span>
+                  <span>{fmtMoney(service.price)}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <StepActions onBack={onBack} onNext={onNext} nextDisabled={!value} />
     </div>
   );
 }
 
-function BarberStep({ shop, value, onChange, onBack, onNext }) {
-  const [q, setQ] = React.useState("");
-
-  const activeForShop = React.useMemo(() => {
-    return BARBERS.filter(
-      (b) => b.shopId === shop?.id && (b.status || "active") === "active"
-    );
-  }, [shop]);
-
+function BarberStep({ shop, barbers, loading, value, valueDate, onDate, onChange, onSuggestionPick, onBack, onNext }) {
+  const [query, setQuery] = React.useState("");
   const filtered = React.useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return activeForShop;
-    return activeForShop.filter((b) => {
-      const hay = [b.name, ...(b.specialties || [])].join(" ").toLowerCase();
-      return hay.includes(s);
-    });
-  }, [q, activeForShop]);
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return barbers;
 
-  const anyBarber = { id: "any", name: "Any available barber", rating: "—", specialties: ["Fastest match"] };
-  const listToRender = [anyBarber, ...filtered];
+    return barbers.filter((barber) => {
+      const haystack = [barber.name, barber.email, ...(barber.specialties || [])].join(" ").toLowerCase();
+      return haystack.includes(normalized);
+    });
+  }, [barbers, query]);
+
+  const anyBarberAvailable = filtered.some((barber) => (barber.availableSlots || []).length > 0);
+  const list = anyBarberAvailable ? [ANY_BARBER, ...filtered] : filtered;
 
   return (
     <div>
       <h2 className="text-2xl font-extrabold">Choose your barber</h2>
-      <p className="mt-1 text-slate-600">{shop?.name}</p>
-
-      {/* Search */}
-      <div className="mt-4">
-        <div className="relative w-full sm:max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search barbers (name or specialty)"
-            className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 py-2 outline-none focus:ring-2 focus:ring-brand-gold"
-          />
-          {q && (
-            <button
-              type="button"
-              onClick={() => setQ("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              aria-label="Clear search"
-            >
-              ×
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* List */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.length === 0 ? (
-          <div className="text-slate-500">No barbers match “{q}”.</div>
-        ) : (
-          listToRender.map((b) => {
-            const selected = value?.id === b.id;
-            return (
-              <button
-                key={b.id}
-                type="button"
-                onClick={() => onChange(b)}
-                className={`text-left rounded-2xl border p-5 transition ${
-                  selected ? "border-brand-gold shadow-soft" : "border-slate-200 hover:shadow"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold">{b.name}</div>
-                  <div className="text-sm text-slate-500">
-                    {b.rating !== "—" ? `⭐ ${b.rating}` : ""}
-                  </div>
-                </div>
-                <div className="mt-2 text-slate-600 text-sm">
-                  {(b.specialties || []).join(" • ")}
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
-
-      <div className="mt-6 flex justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900"
-        >
-          ‹ Back
-        </button>
-        <button
-          type="button"
-          disabled={!value}
-          onClick={onNext}
-          className="btn btn-primary disabled:opacity-50"
-        >
-          Continue
-        </button>
-      </div>
-    </div>
-  );
-}
-
-
-function TimeStep({ service, valueDate, valueTime, onBack, onNext, onDate, onTime }) {
-  const slots = service ? generateSlots(valueDate || todayISO(), service.duration) : [];
-  return (
-    <div>
-      <h2 className="text-2xl font-extrabold">Pick a date & time</h2>
-      <p className="mt-1 text-slate-600">Only valid slots are shown.</p>
+      <p className="mt-1 text-slate-600">We only show barbers with real availability for your selected date.</p>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-[220px,1fr]">
         <div className="rounded-2xl border border-slate-200 p-4">
@@ -356,30 +245,159 @@ function TimeStep({ service, valueDate, valueTime, onBack, onNext, onDate, onTim
           <input
             type="date"
             min={todayISO()}
-            value={valueDate || todayISO()}
-            onChange={(e) => onDate(e.target.value)}
+            value={valueDate}
+            onChange={(event) => onDate(event.target.value)}
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-brand-gold"
+          />
+          <p className="mt-2 text-xs text-slate-500">{shop?.name}</p>
+        </div>
+
+        <div className="relative w-full sm:max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search barbers by name"
+            className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-10 pr-10 outline-none focus:ring-2 focus:ring-brand-gold"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              aria-label="Clear search"
+            >
+              x
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading && <div className="mt-6 text-slate-500">Loading available barbers...</div>}
+
+      {!loading && list.length === 0 && (
+        <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-6 text-slate-500">
+          No barbers in this shop offer the selected service.
+        </div>
+      )}
+
+      {!loading && list.length > 0 && (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {list.map((barber) => {
+            const selected = value?.id === barber.id;
+            const isAnyBarber = barber.id === "any";
+            const isAvailableOnDate = isAnyBarber || (barber.availableSlots?.length || 0) > 0;
+            const suggestedSlots = isAnyBarber ? [] : barber.suggestedSlots || [];
+
+            return (
+              <div
+                key={barber.id}
+                className={`rounded-2xl border p-5 text-left transition ${
+                  selected ? "border-brand-gold shadow-soft" : "border-slate-200 hover:shadow"
+                } ${!isAvailableOnDate ? "bg-slate-50/60" : ""}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isAvailableOnDate) {
+                      onChange(barber);
+                    }
+                  }}
+                  disabled={!isAvailableOnDate}
+                  className="w-full text-left disabled:cursor-not-allowed"
+                >
+                  <div className="font-semibold">{barber.name}</div>
+                  <div className="mt-2 text-sm text-slate-600">
+                    {isAnyBarber
+                      ? "We will assign the first barber with a real open slot."
+                      : isAvailableOnDate
+                        ? barber.nextAvailableTime
+                          ? `Available on ${valueDate}. Next slot ${barber.nextAvailableTime}.`
+                          : `Available on ${valueDate}.`
+                        : `Not available on ${valueDate}.`}
+                  </div>
+                </button>
+                {!isAnyBarber && (
+                  <>
+                    <div className="mt-2 text-xs text-slate-500">
+                      {isAvailableOnDate
+                        ? `${barber.availableSlots?.length || 0} slot${barber.availableSlots?.length === 1 ? "" : "s"} available`
+                        : "Pick one of the next open times below."}
+                    </div>
+                    {suggestedSlots.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {suggestedSlots.map((slot) => {
+                          const label =
+                            slot.dateISO === valueDate ? slot.time : `${slot.dateISO} ${slot.time}`;
+
+                          return (
+                            <button
+                              key={`${barber.id}-${slot.dateISO}-${slot.time}`}
+                              type="button"
+                              onClick={() => onSuggestionPick(barber, slot)}
+                              className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <StepActions onBack={onBack} onNext={onNext} nextDisabled={!value} />
+    </div>
+  );
+}
+
+function TimeStep({ slots, loading, valueDate, valueTime, onDate, onTime, onBack, onNext }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-extrabold">Pick a date and time</h2>
+      <p className="mt-1 text-slate-600">Available slots reflect real barber schedules and existing bookings.</p>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-[220px,1fr]">
+        <div className="rounded-2xl border border-slate-200 p-4">
+          <label className="flex items-center gap-2 font-medium">
+            <Calendar className="h-5 w-5 text-brand-gold" /> Date
+          </label>
+          <input
+            type="date"
+            min={todayISO()}
+            value={valueDate}
+            onChange={(event) => onDate(event.target.value)}
             className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-brand-gold"
           />
         </div>
 
         <div className="rounded-2xl border border-slate-200 p-4">
-          <div className="font-medium mb-3">Available times</div>
-          {slots.length === 0 ? (
-            <div className="text-slate-500">Select a service first.</div>
+          <div className="mb-3 font-medium">Available times</div>
+          {loading ? (
+            <div className="text-slate-500">Checking availability...</div>
+          ) : slots.length === 0 ? (
+            <div className="text-slate-500">No slots are available for this date.</div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-              {slots.map((t) => {
-                const selected = valueTime === t;
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+              {slots.map((slot) => {
+                const selected = valueTime === slot;
+
                 return (
                   <button
-                    key={t}
+                    key={slot}
                     type="button"
-                    onClick={() => onTime(t)}
-                    className={`rounded-xl px-3 py-2 border text-sm ${
+                    onClick={() => onTime(slot)}
+                    className={`rounded-xl border px-3 py-2 text-sm ${
                       selected ? "border-brand-gold bg-amber-50 text-slate-900" : "border-slate-200 hover:bg-slate-50"
                     }`}
                   >
-                    {t}
+                    {slot}
                   </button>
                 );
               })}
@@ -388,37 +406,33 @@ function TimeStep({ service, valueDate, valueTime, onBack, onNext, onDate, onTim
         </div>
       </div>
 
-      <div className="mt-6 flex justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900"
-        >
-          <ChevronLeft className="h-4 w-4" /> Back
-        </button>
-        <button
-          type="button"
-          disabled={!valueDate || !valueTime}
-          onClick={onNext}
-          className="btn btn-primary disabled:opacity-50"
-        >
-          Continue
-        </button>
-      </div>
+      <StepActions onBack={onBack} onNext={onNext} nextDisabled={!valueDate || !valueTime} />
     </div>
   );
 }
 
-function DetailsPaymentStep({ onBack, onNext, shop, service, barber, dateISO, time }) {
-  const [name, setName] = React.useState("");
-  const [email, setEmail] = React.useState("");
+function DetailsPaymentStep({
+  user,
+  shop,
+  service,
+  barber,
+  requestedBarber,
+  dateISO,
+  time,
+  onBack,
+  onConfirm,
+  submitting,
+  error,
+}) {
+  const [name, setName] = React.useState(user?.name || user?.displayName || "");
+  const [email, setEmail] = React.useState(user?.email || "");
   const [notes, setNotes] = React.useState("");
-  const valid = name && email && service && barber && dateISO && time;
+  const valid = Boolean(name && email && service && barber && dateISO && time);
 
   return (
     <div>
       <h2 className="text-2xl font-extrabold">Your details</h2>
-      <p className="mt-1 text-slate-600">We’ll send confirmation & reminders.</p>
+      <p className="mt-1 text-slate-600">We will send confirmation and reminders.</p>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <div>
@@ -426,7 +440,7 @@ function DetailsPaymentStep({ onBack, onNext, shop, service, barber, dateISO, ti
           <input
             className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-brand-gold"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(event) => setName(event.target.value)}
             placeholder="e.g., Stephen Cole"
           />
         </div>
@@ -436,7 +450,7 @@ function DetailsPaymentStep({ onBack, onNext, shop, service, barber, dateISO, ti
             type="email"
             className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-brand-gold"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             placeholder="you@email.com"
           />
         </div>
@@ -446,7 +460,7 @@ function DetailsPaymentStep({ onBack, onNext, shop, service, barber, dateISO, ti
             className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-brand-gold"
             rows={3}
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(event) => setNotes(event.target.value)}
             placeholder="Any preferences?"
           />
         </div>
@@ -454,29 +468,30 @@ function DetailsPaymentStep({ onBack, onNext, shop, service, barber, dateISO, ti
 
       <div className="mt-6 rounded-2xl border border-slate-200 p-4">
         <div className="font-semibold">Summary</div>
-        <div className="mt-2 text-slate-600 text-sm">
-          {service?.name} • {service?.duration}m • {fmtMoney(service?.price || 0)}<br />
-          Shop: {shop?.name}<br />
-          Barber: {barber?.id === "any" ? "Assigned at check-in" : barber?.name}<br />
+        <div className="mt-2 text-sm text-slate-600">
+          {service?.name} | {service?.duration}m | {fmtMoney(service?.price || 0)}
+          <br />
+          Shop: {shop?.name}
+          <br />
+          Barber: {requestedBarber?.id === "any" ? barber?.name || "Select a time to assign a barber" : barber?.name}
+          <br />
           When: {dateISO} at {time}
         </div>
       </div>
 
+      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+
       <div className="mt-6 flex justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900"
-        >
+        <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900">
           <ChevronLeft className="h-4 w-4" /> Back
         </button>
         <button
           type="button"
-          disabled={!valid}
-          onClick={() => onNext({ name, email, notes })}
+          disabled={!valid || submitting}
+          onClick={() => onConfirm({ name, email, notes })}
           className="btn btn-primary disabled:opacity-50"
         >
-          Confirm booking
+          {submitting ? "Saving..." : "Confirm booking"}
         </button>
       </div>
     </div>
@@ -484,54 +499,298 @@ function DetailsPaymentStep({ onBack, onNext, shop, service, barber, dateISO, ti
 }
 
 function ConfirmStep({ payload }) {
+  const navigate = useNavigate();
+
   return (
     <div className="text-center">
-      <h2 className="text-2xl font-extrabold">You’re booked! 🎉</h2>
+      <h2 className="text-2xl font-extrabold">You&apos;re booked!</h2>
       <p className="mt-2 text-slate-600">
-        We’ve sent a confirmation to <span className="font-semibold">{payload.email}</span>.
+        We&apos;ve saved your booking for <span className="font-semibold">{payload.email}</span>.
       </p>
 
-      <div className="mt-6 mx-auto max-w-md rounded-2xl border border-slate-200 p-5 text-left">
+      <div className="mx-auto mt-6 max-w-md rounded-2xl border border-slate-200 p-5 text-left">
         <div className="font-semibold">Appointment</div>
-        <div className="mt-2 text-slate-600 text-sm">
-          {payload.service.name} • {payload.service.duration}m • {fmtMoney(payload.service.price)}<br />
-          Shop: {payload.shop.name}<br />
-          Barber: {payload.barber.id === "any" ? "Assigned at check-in" : payload.barber.name}<br />
-          When: {payload.dateISO} at {payload.time}<br />
+        <div className="mt-2 text-sm text-slate-600">
+          {payload.service.name} | {payload.service.duration}m | {fmtMoney(payload.service.price)}
+          <br />
+          Shop: {payload.shop.name}
+          <br />
+          Barber: {payload.barber?.name}
+          <br />
+          When: {payload.dateISO} at {payload.time}
+          <br />
           Name: {payload.name}
         </div>
       </div>
 
       <div className="mt-8 flex justify-center gap-3">
-        <a href="/" className="btn btn-ghost">Back to home</a>
-        <a href="/dashboard/customer" className="btn btn-primary">Go to my appointments</a>
+        <button type="button" onClick={() => navigate("/")} className="btn btn-ghost">
+          Back to home
+        </button>
+        <button type="button" onClick={() => navigate("/dashboard/customer")} className="btn btn-primary">
+          Go to my appointments
+        </button>
       </div>
     </div>
   );
 }
 
-/* ---------- main page ---------- */
 export default function BookingPage() {
-  const [step, setStep]   = React.useState(1);
-  const [shop, setShop]   = React.useState(null);
+  const { user } = useAuth();
+  const [step, setStep] = React.useState(1);
+  const [shops, setShops] = React.useState([]);
+  const [shopsLoading, setShopsLoading] = React.useState(true);
+  const [shop, setShop] = React.useState(null);
+  const [services, setServices] = React.useState([]);
+  const [servicesLoading, setServicesLoading] = React.useState(false);
   const [service, setService] = React.useState(null);
-  const [barber, setBarber]   = React.useState(null);
+  const [barbers, setBarbers] = React.useState([]);
+  const [barbersLoading, setBarbersLoading] = React.useState(false);
+  const [barber, setBarber] = React.useState(null);
+  const [schedule, setSchedule] = React.useState(DEFAULT_BARBER_SCHEDULE);
+  const [slotAssignments, setSlotAssignments] = React.useState({});
+  const [slotsLoading, setSlotsLoading] = React.useState(false);
   const [dateISO, setDateISO] = React.useState(todayISO());
-  const [time, setTime]       = React.useState("");
+  const [time, setTime] = React.useState("");
   const [details, setDetails] = React.useState(null);
+  const [bookingId, setBookingId] = React.useState("");
+  const [slots, setSlots] = React.useState([]);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState("");
+
+  const assignedBarber = barber?.id === "any" ? slotAssignments[time] || null : barber;
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadShops() {
+      setShopsLoading(true);
+
+      try {
+        const data = await listShops();
+        if (!cancelled) {
+          setShops(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSubmitError(error.message ?? "Failed to load shops.");
+        }
+      } finally {
+        if (!cancelled) {
+          setShopsLoading(false);
+        }
+      }
+    }
+
+    loadShops();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadServices() {
+      if (!shop?.id) {
+        setServices([]);
+        return;
+      }
+
+      setServicesLoading(true);
+
+      try {
+        const data = await listServicesByShop(shop.id);
+        if (!cancelled) {
+          setServices(data);
+          if (!data.find((item) => item.id === service?.id)) {
+            setService(null);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSubmitError(error.message ?? "Failed to load services.");
+        }
+      } finally {
+        if (!cancelled) {
+          setServicesLoading(false);
+        }
+      }
+    }
+
+    loadServices();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [service?.id, shop?.id]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadBarbers() {
+      if (!shop?.id || !service) {
+        setBarbers([]);
+        setBarbersLoading(false);
+        return;
+      }
+
+      setBarbersLoading(true);
+
+      try {
+        const data = await getAvailableBarbersForShopDate({
+          shopId: shop.id,
+          dateISO,
+          duration: service.duration,
+          serviceId: service.id,
+        });
+        if (!cancelled) {
+          setBarbers(data);
+          if (!data.find((item) => item.id === barber?.id) && barber?.id !== "any") {
+            setBarber(null);
+          }
+          if (barber?.id === "any" && data.length === 0) {
+            setBarber(null);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSubmitError(error.message ?? "Failed to load available barbers.");
+        }
+      } finally {
+        if (!cancelled) {
+          setBarbersLoading(false);
+        }
+      }
+    }
+
+    loadBarbers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [barber?.id, dateISO, service, shop?.id]);
+
+  React.useEffect(() => {
+    setSlotsLoading(barbersLoading);
+
+    if (!service || !shop?.id || !barber) {
+      setSchedule(DEFAULT_BARBER_SCHEDULE);
+      setSlotAssignments({});
+      setSlots([]);
+      return;
+    }
+
+    if (barber.id === "any") {
+      const nextAssignments = {};
+
+      barbers.forEach((availableBarber) => {
+        (availableBarber.availableSlots || []).forEach((slot) => {
+          if (!nextAssignments[slot]) {
+            nextAssignments[slot] = availableBarber;
+          }
+        });
+      });
+
+      setSchedule(DEFAULT_BARBER_SCHEDULE);
+      setSlotAssignments(nextAssignments);
+      setSlots(sortSlotValues(Object.keys(nextAssignments)));
+      return;
+    }
+
+    const selectedBarber = barbers.find((item) => item.id === barber.id);
+
+    if (!selectedBarber) {
+      setSchedule(DEFAULT_BARBER_SCHEDULE);
+      setSlotAssignments({});
+      setSlots([]);
+      return;
+    }
+
+    setSchedule(selectedBarber.schedule || DEFAULT_BARBER_SCHEDULE);
+    setSlotAssignments({});
+    setSlots(selectedBarber.availableSlots || []);
+  }, [barber, barbers, barbersLoading, service, shop?.id]);
+
+  async function handleConfirm(detailsPayload) {
+    if (!user || !shop || !service || !barber || !dateISO || !time || !assignedBarber) {
+      setSubmitError("Missing booking information.");
+      return;
+    }
+
+    setSubmitting(true);
+    setSubmitError("");
+
+    try {
+      const bookingPayload = {
+        customerId: user.uid,
+        customerName: detailsPayload.name,
+        customerEmail: detailsPayload.email,
+        shopId: shop.id,
+        shopName: shop.name,
+        shopAddress: shop.address || "",
+        serviceId: service.id,
+        serviceName: service.name,
+        duration: service.duration,
+        price: service.price,
+        barberId: assignedBarber.id,
+        barberName: assignedBarber.name,
+        dateISO,
+        time,
+        notes: detailsPayload.notes || "",
+      };
+
+      const id = await createBooking(bookingPayload);
+      setBookingId(id);
+      setDetails(detailsPayload);
+      setStep(6);
+    } catch (error) {
+      setSubmitError(error.message ?? "Booking failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <section className="container-xl py-10">
       <StepHeader step={step} />
 
+      {submitError && (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {submitError}
+        </div>
+      )}
+
       {step === 1 && (
-        <ShopStep value={shop} onChange={setShop} onNext={() => setStep(2)} />
+        <ShopStep
+          shops={shops}
+          loading={shopsLoading}
+          value={shop}
+          onChange={(nextShop) => {
+            setShop(nextShop);
+            setService(null);
+            setBarber(null);
+            setBarbers([]);
+            setServices([]);
+            setSlotAssignments({});
+            setTime("");
+          }}
+          onNext={() => setStep(2)}
+        />
       )}
 
       {step === 2 && (
         <ServiceStep
+          services={services}
+          loading={servicesLoading}
           value={service}
-          onChange={setService}
+          onChange={(nextService) => {
+            setService(nextService);
+            setBarber(null);
+            setSlotAssignments({});
+            setTime("");
+          }}
           onBack={() => setStep(1)}
           onNext={() => setStep(3)}
         />
@@ -540,8 +799,25 @@ export default function BookingPage() {
       {step === 3 && (
         <BarberStep
           shop={shop}
+          barbers={barbers}
+          loading={barbersLoading}
           value={barber}
-          onChange={setBarber}
+          valueDate={dateISO}
+          onDate={(nextDate) => {
+            setDateISO(nextDate);
+            setTime("");
+          }}
+          onChange={(nextBarber) => {
+            setBarber(nextBarber);
+            setSlotAssignments({});
+            setTime("");
+          }}
+          onSuggestionPick={(nextBarber, slot) => {
+            setBarber(nextBarber);
+            setDateISO(slot.dateISO);
+            setTime(slot.time);
+            setStep(4);
+          }}
           onBack={() => setStep(2)}
           onNext={() => setStep(4)}
         />
@@ -549,10 +825,14 @@ export default function BookingPage() {
 
       {step === 4 && (
         <TimeStep
-          service={service}
+          slots={slots}
+          loading={slotsLoading}
           valueDate={dateISO}
           valueTime={time}
-          onDate={setDateISO}
+          onDate={(nextDate) => {
+            setDateISO(nextDate);
+            setTime("");
+          }}
           onTime={setTime}
           onBack={() => setStep(3)}
           onNext={() => setStep(5)}
@@ -561,18 +841,22 @@ export default function BookingPage() {
 
       {step === 5 && (
         <DetailsPaymentStep
+          user={user}
           shop={shop}
           service={service}
-          barber={barber}
+          barber={assignedBarber}
+          requestedBarber={barber}
           dateISO={dateISO}
           time={time}
           onBack={() => setStep(4)}
-          onNext={(d) => { setDetails(d); setStep(6); }}
+          onConfirm={handleConfirm}
+          submitting={submitting}
+          error={submitError}
         />
       )}
 
-      {step === 6 && (
-        <ConfirmStep payload={{ ...details, shop, service, barber, dateISO, time }} />
+      {step === 6 && details && (
+        <ConfirmStep payload={{ ...details, bookingId, shop, service, barber: assignedBarber, schedule, dateISO, time }} />
       )}
     </section>
   );

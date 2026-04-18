@@ -1,0 +1,179 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function currentUserDoc() {
+      return userDoc(request.auth.uid);
+    }
+
+    function currentUserRole() {
+      return signedIn() ? currentUserDoc().data.role : null;
+    }
+
+    function currentUserShopId() {
+      return signedIn() ? currentUserDoc().data.shopId : null;
+    }
+
+    function shopDoc(shopId) {
+      return get(/databases/$(database)/documents/shops/$(shopId));
+    }
+
+    function shopOwnerId(shopId) {
+      return shopDoc(shopId).data.ownerId;
+    }
+
+    function isOwner() {
+      return signedIn() && currentUserRole() == "owner";
+    }
+
+    function isBarber() {
+      return signedIn() && currentUserRole() == "barber";
+    }
+
+    function isCustomer() {
+      return signedIn() && currentUserRole() == "customer";
+    }
+
+    function ownsShop(shopId) {
+      return isOwner() && currentUserShopId() == shopId;
+    }
+
+    match /users/{userId} {
+      allow create: if signedIn() && request.auth.uid == userId;
+
+      allow read: if signedIn() && (
+        request.auth.uid == userId ||
+        isOwner() ||
+        (
+          currentUserShopId() != null &&
+          resource.data.role == "barber" &&
+          resource.data.shopId == currentUserShopId()
+        ) ||
+        (
+          isCustomer() &&
+          resource.data.role == "barber" &&
+          resource.data.status == "approved"
+        )
+      );
+
+      allow update: if signedIn() && (
+        request.auth.uid == userId ||
+        (
+          isOwner() &&
+          resource.data.role == "barber" &&
+          resource.data.shopId == currentUserShopId()
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    match /shops/{shopId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn();
+
+      allow update: if signedIn() && (
+        resource.data.ownerId == request.auth.uid ||
+        request.resource.data.ownerId == request.auth.uid
+      );
+
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /barberRequests/{requestId} {
+      allow create: if signedIn() &&
+        request.auth.uid == request.resource.data.barberId;
+
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.barberId ||
+        ownsShop(resource.data.shopId)
+      );
+
+      allow update: if signedIn() && (
+        ownsShop(resource.data.shopId) ||
+        request.auth.uid == resource.data.barberId
+      );
+
+      allow delete: if false;
+    }
+
+    match /barberSchedules/{barberId} {
+      allow read: if signedIn();
+
+      allow create, update: if signedIn() && (
+        request.auth.uid == barberId ||
+        (
+          isOwner() &&
+          request.resource.data.barberId == barberId &&
+          request.resource.data.shopId == currentUserShopId()
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    match /services/{serviceId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() && (
+        ownsShop(request.resource.data.shopId) ||
+        shopOwnerId(request.resource.data.shopId) == null
+      );
+
+      allow update: if signedIn() &&
+        ownsShop(resource.data.shopId);
+
+      allow delete: if signedIn() &&
+        ownsShop(resource.data.shopId);
+    }
+
+    match /feedback/{feedbackId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() &&
+        isCustomer() &&
+        request.auth.uid == request.resource.data.customerId;
+
+      allow update, delete: if false;
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.barberId ||
+        ownsShop(resource.data.shopId) ||
+        isCustomer()
+      );
+
+      allow create: if signedIn() && (
+        (
+          isCustomer() &&
+          request.auth.uid == request.resource.data.customerId
+        ) ||
+        (
+          isBarber() &&
+          request.auth.uid == request.resource.data.barberId &&
+          request.resource.data.shopId == currentUserShopId() &&
+          request.resource.data.customerId == null &&
+          request.resource.data.isWalkIn == true
+        )
+      );
+
+      allow update: if signedIn() && (
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.barberId ||
+        ownsShop(resource.data.shopId)
+      );
+
+      allow delete: if false;
+    }
+  }
+}
