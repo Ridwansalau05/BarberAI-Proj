@@ -12,8 +12,7 @@ Customers to create accounts, book appointments, explore personalized haircut su
 
 Barbers to manage their daily schedule, monitor upcoming appointments, and view performance insights.
 
-This project is being developed as part of CSCI 411/412.
-The current semester focuses on completing the full frontend workflow (navigation, dashboards, booking system, and authentication flow). Firebase Authentication and Firestore integration are being progressively refined for persistent data storage and real user sessions.
+The current project focuses on completing the full frontend and backend workflow (navigation, dashboards, booking system, and authentication flow). Firebase Authentication and Firestore integration are being progressively refined for persistent data storage and real user sessions.
 
 Technologies Used
 Frontend
